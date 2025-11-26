@@ -12,7 +12,29 @@ This script translates Estonian text in Tableau workbook (.twb) files to English
 - ✓ Keeps all XML structure and tags intact
 - ✓ Creates a new file (doesn't modify the original)
 
-## Setup
+## Tableau file preparation
+
+1. **Convert the .txbx to .zip file**
+
+```bash
+   filename.twbx → filename.zip
+```
+
+2. **Unzip the file**
+
+Inside, you will find:
+- ✓ A .twb file → XML with all text, titles, sheet names, tooltip text, parameters, labels
+- ✓ Possibly .hyper or .tde files → data extracts
+- ✓ Image assets
+- ✓ Connection info files
+
+3. **Locate the .twb (XML file)**
+Open the .twb (XML) in a text editor (VS Code, Notepad++, Sublime).
+
+5. **Run the script (below)**
+
+
+## Run the translation script 
 
 1. **Install Python dependencies:**
    ```bash
@@ -53,11 +75,20 @@ The script will:
 3. Translate them using Claude API (in batches)
 4. Create a new file: `Viljandimaa ÜTK_EN.twb`
 
-## Output
+## Translation Output
 
 The translated file will be created in the same directory:
 - **Input:** `Viljandimaa ÜTK.twb`
 - **Output:** `Viljandimaa ÜTK_EN.twb`
+
+## Create the translated Tableau file .twbx  
+
+
+1. **Select and re-zip the translated .twb file with other data files**
+```bash
+filename.zip → filename.twbx
+```
+
 
 ## What Gets Translated
 
@@ -102,3 +133,4 @@ The translated file will be created in the same directory:
 - The script preserves exact XML formatting to maintain Tableau references
 - Translation happens in batches of 20 items to optimize API usage
 - Progress is shown in the console during translation
+
