@@ -1,24 +1,50 @@
 #!/usr/bin/env python3
 """
-Tableau Workbook (.twb) Estonian to English Translator
+Tableau Workbook (.twb) Translator
 Uses Claude API to translate user-facing text while preserving XML structure
+Supports translation to any language (default: English)
 """
 
 import re
 import os
+import sys
+import argparse
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from anthropic import Anthropic
 
 # Configuration
 INPUT_FILE = "Viljandimaa ÜTK.twb"
-OUTPUT_FILE = "Viljandimaa ÜTK_EN.twb"
+TARGET_LANGUAGE = "English"  # Default target language
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")  # Set your API key as environment variable
 
 if not ANTHROPIC_API_KEY:
     raise ValueError("Please set ANTHROPIC_API_KEY environment variable")
 
 client = Anthropic(api_key=ANTHROPIC_API_KEY)
+
+
+def get_language_code(language):
+    """Convert language name to ISO code for file naming"""
+    language_codes = {
+        'english': 'EN',
+        'french': 'FR',
+        'german': 'DE',
+        'spanish': 'ES',
+        'italian': 'IT',
+        'portuguese': 'PT',
+        'russian': 'RU',
+        'chinese': 'ZH',
+        'japanese': 'JP',
+        'korean': 'KR',
+        'dutch': 'NL',
+        'polish': 'PL',
+        'swedish': 'SE',
+        'finnish': 'FI',
+        'norwegian': 'NO',
+        'danish': 'DK',
+    }
+    return language_codes.get(language.lower(), language[:2].upper())
 
 
 def create_backup(file_path):
@@ -46,20 +72,20 @@ def validate_xml(content):
         return False, f"XML parse error: {e}"
 
 
-def translate_with_claude(text_items, context=""):
+def translate_with_claude(text_items, target_language="English", context=""):
     """
-    Translate a list of Estonian text items to English using Claude API
+    Translate a list of text items to target language using Claude API
     Returns a dictionary mapping original text to translated text
     """
     if not text_items:
         return {}
 
     # Create prompt for Claude
-    prompt = f"""Translate the following Estonian texts to English.
+    prompt = f"""Translate the following texts to {target_language}.
 
 IMPORTANT RULES:
-1. Keep place names and company names in Estonian (e.g., "Viljandimaa", "Tartu", "TK", "ÜTK")
-2. Preserve Tableau technical terminology exactly as it should be in English
+1. Keep place names and company names as they are (e.g., "Viljandimaa", "Tartu", "TK", "ÜTK")
+2. Preserve Tableau technical terminology exactly as it should be in {target_language}
 3. Only translate the user-facing labels and descriptions
 4. Do NOT include any special characters that need XML escaping (use plain quotes, not &quot;)
 5. Return ONLY a numbered list with translations, one per line
@@ -67,7 +93,7 @@ IMPORTANT RULES:
 
 Context: {context}
 
-Estonian texts to translate:
+Texts to translate:
 {chr(10).join(f"{i+1}. {text}" for i, text in enumerate(text_items))}
 
 Return format (plain text only, no special XML characters):
@@ -258,11 +284,12 @@ def safe_replace(content, original, translated):
     return content, replacements
 
 
-def translate_file(input_path, output_path):
+def translate_file(input_path, output_path, target_language="English"):
     """
     Main function to translate the Tableau workbook file
     """
     print(f"Reading file: {input_path}")
+    print(f"Target language: {target_language}")
 
     # Create backup
     backup_path = create_backup(input_path)
@@ -298,14 +325,14 @@ def translate_file(input_path, output_path):
         if not items:
             continue
 
-        print(f"\nTranslating {text_type}...")
+        print(f"\nTranslating {text_type} to {target_language}...")
 
         # Process in batches
         for i in range(0, len(items), batch_size):
             batch = items[i:i+batch_size]
             print(f"  Batch {i//batch_size + 1}: {len(batch)} items")
 
-            translations = translate_with_claude(batch, context=text_type)
+            translations = translate_with_claude(batch, target_language=target_language, context=text_type)
             all_translations.update(translations)
 
             # Show some examples
@@ -360,20 +387,75 @@ def translate_file(input_path, output_path):
 
 def main():
     """Main entry point"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    input_path = os.path.join(script_dir, INPUT_FILE)
-    output_path = os.path.join(script_dir, OUTPUT_FILE)
+    parser = argparse.ArgumentParser(
+        description='Translate Tableau workbook (.twb) files to any language using Claude API',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Translate to English (default)
+  python translate_tableau.py input.twb
 
+  # Translate to French
+  python translate_tableau.py input.twb -l French
+
+  # Translate to German with custom output file
+  python translate_tableau.py input.twb -l German -o output_DE.twb
+        """
+    )
+
+    parser.add_argument('input_file', nargs='?', default=INPUT_FILE,
+                        help=f'Input Tableau workbook file (default: {INPUT_FILE})')
+    parser.add_argument('-l', '--language', default=TARGET_LANGUAGE,
+                        help=f'Target language for translation (default: {TARGET_LANGUAGE})')
+    parser.add_argument('-o', '--output', default=None,
+                        help='Output file path (default: auto-generated based on input file and language)')
+
+    args = parser.parse_args()
+
+    # Determine paths
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Input file path
+    if os.path.isabs(args.input_file):
+        input_path = args.input_file
+    else:
+        input_path = os.path.join(script_dir, args.input_file)
+
+    # Output file path
+    if args.output:
+        if os.path.isabs(args.output):
+            output_path = args.output
+        else:
+            output_path = os.path.join(script_dir, args.output)
+    else:
+        # Auto-generate output filename based on language
+        lang_code = get_language_code(args.language)
+        base_name = os.path.splitext(args.input_file)[0]
+        output_path = os.path.join(script_dir, f"{base_name}_{lang_code}.twb")
+
+    # Validate input file
     if not os.path.exists(input_path):
         print(f"Error: Input file not found: {input_path}")
-        return
+        sys.exit(1)
+
+    # Show configuration
+    print(f"{'='*60}")
+    print(f"Tableau Workbook Translator")
+    print(f"{'='*60}")
+    print(f"Input:    {os.path.basename(input_path)}")
+    print(f"Output:   {os.path.basename(output_path)}")
+    print(f"Language: {args.language}")
+    print(f"{'='*60}\n")
 
     try:
-        translate_file(input_path, output_path)
+        translate_file(input_path, output_path, target_language=args.language)
     except Exception as e:
+        print(f"\n{'='*60}")
         print(f"Error during translation: {e}")
+        print(f"{'='*60}")
         import traceback
         traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
